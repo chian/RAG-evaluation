@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, PreTrainedTokenizer, PreTrainedModel
 import torch
 import torch.nn.functional as F
 import argparse
@@ -21,21 +21,21 @@ from chromadb.api.types import (
     is_document,
 )
 import re
+#import pdb
 
 class LocalEmbeddingFunction(EmbeddingFunction[Documents]):
     def __init__(
             self,
-            model_name: str,
+            #model_name: str,
+            tokenizer: PreTrainedTokenizer,
+            model: PreTrainedModel,
             normalize_embeddings: bool = True,
     ):
         """
         Initializes the embedding function with a specified model from HuggingFace.
-
-        Parameters:
-        - model_name (str): The name of the model to load from HuggingFace.
         """
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self._model = AutoModel.from_pretrained(model_name)
+        self._tokenizer = tokenizer
+        self._model = model
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
         self._normalize_embeddings = normalize_embeddings
@@ -46,9 +46,11 @@ class LocalEmbeddingFunction(EmbeddingFunction[Documents]):
             self._model.encode(
                 list(input),
                 convert_to_numpy=True,
-                normalize_embeddings=self._normalize_embeddings,
+		normalize_embeddings=self._normalize_embeddings,
                 ).tolist()
             )
+
+        self._normalize_embeddings = normalize_embeddings
 
     def embed_documents(self, documents: List[Documents]) -> List[List[float]]:
         
@@ -66,7 +68,10 @@ class LocalEmbeddingFunction(EmbeddingFunction[Documents]):
             model_output = self._model(**encoded_input)
 
         # Extract embeddings
-        embeddings = model_output.last_hidden_state.mean(dim=1).tolist()
+        hidden_states = model_output.hidden_states
+        last_layer_hidden_states = hidden_states[-1]
+        embeddings = last_layer_hidden_states.mean(dim=1).tolist()
+        #embeddings = model_output.last_hidden_state.mean(dim=1).tolist()
         #print(len(embeddings))
         
         return embeddings
@@ -89,7 +94,12 @@ class LocalEmbeddingFunction(EmbeddingFunction[Documents]):
 
         # Extract embeddings from the model output. Depending on the model, you might want to adjust this.
         # For many models, taking the mean of the last hidden state across the token dimension is a good starting point.
-        embeddings = model_output.last_hidden_state.mean(dim=1).tolist()
+        #pdb.set_trace()
+        #print("model_output:",model_output)
+        hidden_states = model_output.hidden_states
+        last_layer_hidden_states = hidden_states[-1]
+        embeddings = last_layer_hidden_states.mean(dim=1).tolist()
+        #embeddings = model_output.last_hidden_state.mean(dim=1).tolist()
         #print(len(embeddings))
         #print(len(embeddings[0]))
         #print(embeddings[0])
@@ -145,9 +155,13 @@ args = parser.parse_args()
 
 # Load the tokenizer and model from HuggingFace
 model_name = args.model_name
-"""
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModel.from_pretrained(model_name)
+model.config.use_cache = False
+model.config.output_hidden_states = True
+
 #Loading or making Chroma database
-embedding_function = LocalEmbeddingFunction(model_name)
+embedding_function = LocalEmbeddingFunction(tokenizer,model)
 if (os.path.exists(args.persist_dir) and os.listdir(args.persist_dir)) and args.revector==False:
     print("Loading existing ChromaDB from", args.persist_dir)
     vectordb = Chroma(embedding_function=embedding_function,persist_directory=args.persist_dir)
@@ -156,12 +170,12 @@ else:
     # Load input files from input_dir
     loader = DirectoryLoader(args.input_dir, glob="*", loader_cls=TextLoader)
     documents = loader.load()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=100)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=100)
     doc_chunks = text_splitter.split_documents(documents)
     vectordb = Chroma.from_documents(documents=doc_chunks, embedding=embedding_function, persist_directory=args.persist_dir)
 
 # Initialize retriever
-zone = 1791
+zone = 255 #1791
 retriever = vectordb.as_retriever(search_kwargs={"k": zone})
 #docs = retriever.get_relevant_documents("What is the name of cpd32028?")
 #print("RELEVANT DOCS",len(docs))
@@ -171,7 +185,7 @@ retriever = vectordb.as_retriever(search_kwargs={"k": zone})
 test_filename = args.test_file
 test_results = VectorTest(test_filename=test_filename, retriever=retriever)
 #print(test_results)
-"""
+
 #Fine-tune model
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, BitsAndBytesConfig
@@ -201,9 +215,9 @@ base_model_name = model_name
 
 base_model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
-    #load_in_8bit=True,
-    # load_in_4bit=True,
-    # quantization_config=bnb_config,
+    load_in_8bit=True,
+    #load_in_4bit=True,
+    #quantization_config=bnb_config,
     device_map='auto',
 )
 base_model.config.use_cache = False
@@ -249,19 +263,20 @@ print(train_dataset[0])
 
 training_arguments = TrainingArguments(
     output_dir = "TMP_RESULTS",
-    per_device_train_batch_size = 12,
+    per_device_train_batch_size = 4,
     gradient_accumulation_steps = 4,
     save_strategy="epoch",
     logging_steps=10,
     num_train_epochs=10,
     max_steps=80,
     learning_rate=2e-4,
-    fp16=False, #False on a mac
+    fp16=True, #False on a mac
     # max_grad_norm = 0.3,
     # max_steps = 300,
     warmup_ratio = 0.03,
     group_by_length=True,
     lr_scheduler_type = "linear",  # vs constant
+    report_to = "none",
 )
 
 trainer = SFTTrainer(
@@ -278,5 +293,45 @@ trainer.save_model("TMP_adapter")
 adapter_model = model
 print("Lora Adapter saved")
 
+# can't merge the 8 bit/4 bit model with Lora so reload it
+repo_id = args.model_name
+use_ram_optimized_load=False
+
+base_model = AutoModelForCausalLM.from_pretrained(
+    repo_id,
+    # trust_remote_code=True,
+    device_map='auto',
+)
+base_model.config.use_cache = False
+base_model.config.output_hidden_states = True
+
+footprint = base_model.get_memory_footprint()
+print("BASE MEM FOOTPRINT",footprint)
+
+# Load Lora adapter                     
+peft_model = PeftModel.from_pretrained(
+    base_model,
+    "TMP_adapter",
+)
+peft_model.config.use_cache = False
+peft_model.config.output_hidden_states = True
+
 #Run VectorDB test: finding relevant documents - on fine-tuned model vectors
 
+#Loading or making Chroma database
+embedding_function = LocalEmbeddingFunction(tokenizer,peft_model)
+
+# Load input files from input_dir
+loader = DirectoryLoader(args.input_dir, glob="*", loader_cls=TextLoader)
+documents = loader.load()
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=100)
+doc_chunks = text_splitter.split_documents(documents)
+vectordb = Chroma.from_documents(documents=doc_chunks, embedding=embedding_function)
+
+# Initialize retriever
+zone = 109 #1791
+retriever = vectordb.as_retriever(search_kwargs={"k": zone})
+#Run VectorDB test: finding relevant documents - on base model vectors
+test_filename = args.test_file
+test_results = VectorTest(test_filename=test_filename, retriever=retriever)
+#print(test_results)
