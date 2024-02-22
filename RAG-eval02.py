@@ -215,7 +215,7 @@ base_model_name = model_name
 
 base_model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
-    load_in_8bit=True,
+    #load_in_8bit=True,
     #load_in_4bit=True,
     #quantization_config=bnb_config,
     device_map='auto',
@@ -270,7 +270,7 @@ training_arguments = TrainingArguments(
     num_train_epochs=10,
     max_steps=80,
     learning_rate=2e-4,
-    fp16=True, #False on a mac
+    fp16=False, #False on a mac
     # max_grad_norm = 0.3,
     # max_steps = 300,
     warmup_ratio = 0.03,
