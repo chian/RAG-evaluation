@@ -20,27 +20,15 @@ To get started with using the Polaris HPC cluster for your fine-tuning tasks, fo
    module load conda/2023-10-04
    conda activate base
    ```
-
-2. **Copy Conda Environment Locally**
+      
+2. **Optional: Copy Conda Environment Locally**
 
    ```bash
    conda create --clone base --prefix /path/to/envs/base-clone
    conda activate /path/to/envs/base-clone
    ```
-   
-3. **Pip install requirements**
-   
-   ```bash
-   pip install --ignore-installed -r requirements.txt
-   ```
 
-6. **Activate you conda env**
-
-   ```bash
-   conda activate /path/to/your/directory/envname
-   ```
-   
-7. **Clone the GitHub Repository**
+3. **Clone the GitHub Repository**
 
    Replace `[this-github]` with the actual URL of the GitHub repository you intend to use.
    You may want to use a project directory for more storage space.
@@ -49,15 +37,28 @@ To get started with using the Polaris HPC cluster for your fine-tuning tasks, fo
    git clone [this-github]
    ```
 
-8. **Install Required Packages**
-
-   Navigate to the cloned repository directory and install the required dependencies:
+4. **Set up virtual environment**
 
    ```bash
-   pip install -r requirements.txt
+   VENV_DIR="venvs/polaris"
+   mkdir -p "${VENV_DIR}"
+   python -m venv "${VENV_DIR}" --system-site-packages
+   source "${VENV_DIR}/bin/activate"
    ```
 
-9. **Run the Evaluation Script**
+6. **Pip install requirements**
+   
+   ```bash
+   pip install --ignore-installed -r requirements.txt
+   ```
+
+7. **Activate you conda env**
+
+   ```bash
+   conda activate /path/to/your/directory/envname
+   ```
+   
+8. **Run the Evaluation Script**
 
    Execute the evaluation script with the necessary parameters:
 
