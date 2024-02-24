@@ -21,24 +21,26 @@ To get started with using the Polaris HPC cluster for your fine-tuning tasks, fo
    conda activate base
    ```
 
-2. **Start an interactive job**
-
-3. **Perform a local conda install**
-
-   Replace `/path/to/your/directory/envname` to whereever you want to store this conda environment.
-   You will have to use a project directory since this will exceed your home directory storage quota.
+2. **Copy Conda Environment Locally**
 
    ```bash
-   conda env create --prefix=/path/to/your/directory/envname -f environment.yml
+   conda create --clone base --prefix /path/to/envs/base-clone
+   conda activate /path/to/envs/base-clone
+   ```
+   
+3. **Pip install requirements**
+   
+   ```bash
+   pip install --ignore-installed -r requirements.txt
    ```
 
-4. **Activate you conda env**
+6. **Activate you conda env**
 
    ```bash
    conda activate /path/to/your/directory/envname
    ```
    
-5. **Clone the GitHub Repository**
+7. **Clone the GitHub Repository**
 
    Replace `[this-github]` with the actual URL of the GitHub repository you intend to use.
    You may want to use a project directory for more storage space.
@@ -47,7 +49,7 @@ To get started with using the Polaris HPC cluster for your fine-tuning tasks, fo
    git clone [this-github]
    ```
 
-6. **Install Required Packages**
+8. **Install Required Packages**
 
    Navigate to the cloned repository directory and install the required dependencies:
 
@@ -55,7 +57,7 @@ To get started with using the Polaris HPC cluster for your fine-tuning tasks, fo
    pip install -r requirements.txt
    ```
 
-7. **Run the Evaluation Script**
+9. **Run the Evaluation Script**
 
    Execute the evaluation script with the necessary parameters:
 
