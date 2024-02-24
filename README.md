@@ -18,6 +18,7 @@ To get started with using the Polaris HPC cluster for your fine-tuning tasks, fo
 
    ```bash
    module load conda/2023-10-04
+   conda activate base
    ```
 
 2. **Start an interactive job**
