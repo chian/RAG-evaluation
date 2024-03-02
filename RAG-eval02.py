@@ -254,15 +254,16 @@ lora_config = LoraConfig(
 
 model = get_peft_model(base_model, lora_config)
 
-filename = args.input_dir + "/compounds_top100.txt"
+filename = os.path.join(args.input_dir, "compounds_top100.txt")
 print(filename)
 data = get_text_data(filename)
 train_dataset = Dataset.from_dict({key: [dic[key] for dic in data] for key in data[0]})
 print(train_dataset)
 print(train_dataset[0])
+output_dir = os.path.join(args.input_dir,"TMP_RESULTS")
 
 training_arguments = TrainingArguments(
-    output_dir = "TMP_RESULTS",
+    output_dir = output_dir,
     per_device_train_batch_size = 4,
     gradient_accumulation_steps = 4,
     save_strategy="epoch",
@@ -289,7 +290,8 @@ trainer = SFTTrainer(
 
 trainer.train()
 
-trainer.save_model("TMP_adapter")
+adaptor_filename = os.path.join(args.input_dir,"TMP_adapter")
+trainer.save_model(adaptor_filename)
 adapter_model = model
 print("Lora Adapter saved")
 
@@ -311,7 +313,7 @@ print("BASE MEM FOOTPRINT",footprint)
 # Load Lora adapter                     
 peft_model = PeftModel.from_pretrained(
     base_model,
-    "TMP_adapter",
+    adaptor_filename,
 )
 peft_model.config.use_cache = False
 peft_model.config.output_hidden_states = True
@@ -320,16 +322,23 @@ peft_model.config.output_hidden_states = True
 
 #Loading or making Chroma database
 embedding_function = LocalEmbeddingFunction(tokenizer,peft_model)
-
-# Load input files from input_dir
-loader = DirectoryLoader(args.input_dir, glob="*", loader_cls=TextLoader)
-documents = loader.load()
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=100)
-doc_chunks = text_splitter.split_documents(documents)
-vectordb = Chroma.from_documents(documents=doc_chunks, embedding=embedding_function)
+second_chroma_dir = os.path.join(args.input_dir,args.persist_dir)
+if (os.path.exists(second_chroma_dir) and os.listdir(second_chroma_dir)) and args.revector==False:
+    print("Loading existing ChromaDB from", second_chroma_dir)
+    vectordb = Chroma(embedding_function=embedding_function,persist_directory=second_chroma_dir)
+else:
+    print("Creating new ChromaDB at", second_chroma_dir)
+    # Load input files from input_dir
+    loader = DirectoryLoader(args.input_dir, glob="*", loader_cls=TextLoader)
+    documents = loader.load()
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=100)
+    doc_chunks = text_splitter.split_documents(documents)
+    print("documents chunked. moving on to vectorization...")
+    vectordb = Chroma.from_documents(documents=doc_chunks, embedding=embedding_function, persist_directory=second_chroma_dir)
+    print("vectorization complete. moving on to VectorTest...")
 
 # Initialize retriever
-zone = 109 #1791
+#zone = 109 #1791
 retriever = vectordb.as_retriever(search_kwargs={"k": zone})
 #Run VectorDB test: finding relevant documents - on base model vectors
 test_filename = args.test_file
