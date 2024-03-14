@@ -151,6 +151,7 @@ parser.add_argument('--test_file', type=str)
 parser.add_argument('--model_name', type=str, default="meta-llama/Llama-2-7b-chat-hf")
 parser.add_argument('--persist_dir', type=str, default="chroma_db")
 parser.add_argument('--revector', action='store_true')
+#parser.add_argument('--adapter_dir', type=str, default="TMP_ADAPTER")
 
 args = parser.parse_args()
 
